@@ -1,7 +1,7 @@
 {
   "name": "ipc-simple",
   "description": "simple package node-ipc",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "main": "index.js",
   "repository": "limfa/ipc-simple",
   "author": {
