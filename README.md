@@ -17,7 +17,7 @@ feature:
 start server
 
 ```js
-const Ipc = require('ipc-promise')
+const Ipc = require('ipc-simple')
 // ipc socket directory
 Ipc.defaultConfig.socketRoot = './.socket'
 
@@ -45,7 +45,7 @@ await ipcServer.close()
 send message
 
 ```js
-const Ipc = require('ipc-promise')
+const Ipc = require('ipc-simple')
 // ipc socket directory
 Ipc.defaultConfig.socketRoot = './.socket'
 
