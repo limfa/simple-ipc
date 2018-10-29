@@ -1,0 +1,9 @@
+{
+  "standard.options": {
+    "globals": [
+      "beforeAll",
+      "test",
+      "expect",
+    ]
+  }
+}
