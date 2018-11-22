@@ -66,20 +66,22 @@ exports.Server = class extends EventEmitter {
 exports.Client = class extends EventEmitter {
   constructor(name, setIpcConfig = exports.setIpcConfig) {
     super()
-    this.ipc = new IPC()
-    setIpcConfig(this.ipc)
-    this.options = {
-      name,
-      timeout: this.ipc.config.retry * (this.ipc.config.maxRetries + 1)
-    }
+    this._setIpcConfig = setIpcConfig
+    this.options = { name }
     this.init()
   }
   async init() {
     if (!this._init) {
+      this.ipc = new IPC()
+      this._setIpcConfig(this.ipc)
+      this.options.timeout =
+        this.ipc.config.retry * (this.ipc.config.maxRetries + 1)
+
       const { name } = this.options
       this._init = new Promise((resolve, reject) => {
         const t = setTimeout(() => {
           reject(new Error(`IPC connect to "${name}" time out`))
+          this._init = null
         }, this.options.timeout)
         this.ipc.connectTo(name, () => {
           this.ipc.of[name].on('message', data => {
@@ -99,6 +101,7 @@ exports.Client = class extends EventEmitter {
       const t = setTimeout(() => {
         this.removeListener('_receive', cb)
         reject(new Error(`IPC call "${method}(${params})" time out`))
+        this._init = null
       }, this.options.timeout)
       const cb = ({ id: _id, method: _method, result }) => {
         if (id !== _id || method !== _method) return
