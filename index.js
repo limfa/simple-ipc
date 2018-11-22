@@ -1,10 +1,13 @@
 const { IPC } = require('node-ipc')
 const { EventEmitter } = require('events')
 const fs = require('fs-extra')
+const os = require('os')
+const path = require('path')
 
-exports.setIpcConfig = function (ipc) {
+exports.setIpcConfig = function(ipc) {
   ipc.config.retry = 1000
   ipc.config.maxRetries = 3
+  ipc.config.socketRoot = path.join(os.tmpdir(), '.sockets')
   if (process.env.NODE_ENV !== 'development') {
     ipc.config.silent = true
   }
@@ -16,7 +19,7 @@ exports.setIpcConfig = function (ipc) {
 exports.defaultConfig = {}
 
 exports.Server = class extends EventEmitter {
-  constructor (name, methods, setIpcConfig = exports.setIpcConfig) {
+  constructor(name, methods, setIpcConfig = exports.setIpcConfig) {
     super()
 
     this.methods = methods
@@ -28,7 +31,7 @@ exports.Server = class extends EventEmitter {
       timeout: this.ipc.config.retry * (this.ipc.config.maxRetries + 1)
     }
   }
-  async listen () {
+  async listen() {
     await fs.ensureDir(this.ipc.config.socketRoot)
     return new Promise((resolve, reject) => {
       const t = setTimeout(() => {
@@ -47,10 +50,10 @@ exports.Server = class extends EventEmitter {
       this.ipc.server.start()
     })
   }
-  async close () {
+  async close() {
     this.ipc.server.stop()
   }
-  async getConnections () {
+  async getConnections() {
     return new Promise((resolve, reject) => {
       this.ipc.server.server.getConnections((error, count) => {
         if (error) reject(error)
@@ -61,7 +64,7 @@ exports.Server = class extends EventEmitter {
 }
 
 exports.Client = class extends EventEmitter {
-  constructor (name, setIpcConfig = exports.setIpcConfig) {
+  constructor(name, setIpcConfig = exports.setIpcConfig) {
     super()
     this.ipc = new IPC()
     setIpcConfig(this.ipc)
@@ -71,7 +74,7 @@ exports.Client = class extends EventEmitter {
     }
     this.init()
   }
-  async init () {
+  async init() {
     if (!this._init) {
       const { name } = this.options
       this._init = new Promise((resolve, reject) => {
@@ -89,7 +92,7 @@ exports.Client = class extends EventEmitter {
     }
     return this._init
   }
-  async call (method, ...params) {
+  async call(method, ...params) {
     await this.init()
     const id = Math.random().toString()
     const p = new Promise((resolve, reject) => {
@@ -108,7 +111,7 @@ exports.Client = class extends EventEmitter {
     this.ipc.of[this.options.name].emit('message', { id, method, params })
     return p
   }
-  async close () {
+  async close() {
     this._init = null
     if (!this.ipc.of[this.options.name]) return
     return new Promise(resolve => {
