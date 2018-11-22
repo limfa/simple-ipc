@@ -3,7 +3,7 @@
   "description": "simple package node-ipc",
   "version": "0.0.2",
   "main": "index.js",
-  "repository": "limfa/ipc-simple",
+  "repository": "limfa/simple-ipc",
   "author": {
     "name": "heyman"
   },
