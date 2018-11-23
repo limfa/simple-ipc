@@ -39,8 +39,16 @@ exports.Server = class {
         this.ipc.server.on('message', async (data, socket) => {
           const { id, method, params } = data
           if (!this.methods[method]) return
-          const result = await this.methods[method].apply(null, params)
-          this.ipc.server.emit(socket, 'message', { id, method, result })
+          try {
+            var result = await this.methods[method].apply(null, params)
+          } catch (ex) {
+            var error = {
+              name: ex.name,
+              message: ex.message,
+              stack: ex.stack
+            }
+          }
+          this.ipc.server.emit(socket, 'message', { id, method, result, error })
         })
         clearTimeout(t)
         resolve()
@@ -101,11 +109,15 @@ exports.Client = class {
         reject(new Error(`IPC call "${method}(${params})" time out`))
         this._init = null
       }, this.options.timeout)
-      const cb = ({ id: _id, method: _method, result }) => {
+      const cb = ({ id: _id, method: _method, result, error }) => {
         if (id !== _id || method !== _method) return
         this._receiveList.delete(cb)
         clearTimeout(t)
-        resolve(result)
+        if (error) {
+          const ex = new Error()
+          Object.assign(ex, error)
+          reject(ex)
+        } else resolve(result)
       }
       this._receiveList.add(cb)
     })

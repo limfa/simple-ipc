@@ -11,10 +11,15 @@ test('call', async () => {
   const requestData = { message: 'message' }
   const response = { result: 'reture' }
 
+  const error = new Error('x')
+
   let ipcServer = new Ipc.Server(namespace, {
-    eventName: (data) => {
+    eventName: data => {
       expect(data).toMatchObject(requestData)
       return response
+    },
+    errorName: () => {
+      throw error
     }
   })
   await ipcServer.listen()
@@ -22,6 +27,12 @@ test('call', async () => {
   const client = new Ipc.Client(namespace)
   const res = await client.call('eventName', requestData)
   expect(res).toMatchObject(response)
+
+  try {
+    await client.call('errorName')
+  } catch (ex) {
+    expect(ex).toMatchObject(error)
+  }
 
   expect(await ipcServer.getConnections()).toBe(1)
 
