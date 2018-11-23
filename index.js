@@ -18,10 +18,8 @@ exports.setIpcConfig = function(ipc) {
 
 exports.defaultConfig = {}
 
-exports.Server = class extends EventEmitter {
+exports.Server = class {
   constructor(name, methods, setIpcConfig = exports.setIpcConfig) {
-    super()
-
     this.methods = methods
     this.ipc = new IPC()
     setIpcConfig(this.ipc)
@@ -63,11 +61,11 @@ exports.Server = class extends EventEmitter {
   }
 }
 
-exports.Client = class extends EventEmitter {
+exports.Client = class {
   constructor(name, setIpcConfig = exports.setIpcConfig) {
-    super()
     this._setIpcConfig = setIpcConfig
     this.options = { name }
+    this._receiveList = new Set()
     this.init()
   }
   async init() {
@@ -85,7 +83,7 @@ exports.Client = class extends EventEmitter {
         }, this.options.timeout)
         this.ipc.connectTo(name, () => {
           this.ipc.of[name].on('message', data => {
-            this.emit('_receive', data)
+            for (let cb of this._receiveList) cb(data)
           })
           clearTimeout(t)
           resolve()
@@ -99,17 +97,17 @@ exports.Client = class extends EventEmitter {
     const id = Math.random().toString()
     const p = new Promise((resolve, reject) => {
       const t = setTimeout(() => {
-        this.removeListener('_receive', cb)
+        this._receiveList.delete(cb)
         reject(new Error(`IPC call "${method}(${params})" time out`))
         this._init = null
       }, this.options.timeout)
       const cb = ({ id: _id, method: _method, result }) => {
         if (id !== _id || method !== _method) return
-        this.removeListener('_receive', cb)
+        this._receiveList.delete(cb)
         clearTimeout(t)
         resolve(result)
       }
-      this.on('_receive', cb)
+      this._receiveList.add(cb)
     })
     this.ipc.of[this.options.name].emit('message', { id, method, params })
     return p
