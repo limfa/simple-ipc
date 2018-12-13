@@ -44,6 +44,44 @@ test('call', async () => {
   await ipcServer.close()
 })
 
+test('call and socket close', async () => {
+  const namespace = 'test2'
+
+  const requestData = { message: 'message' }
+  const response = { result: 'reture' }
+
+  let ipcServer = new Ipc.Server(namespace, {
+    eventName: function(data, t) {
+      expect(data).toMatchObject(requestData)
+      return new Promise(resolve => {
+        let timeout = setTimeout(() => {
+          resolve(response)
+        }, t)
+        // clear follow step when socket end
+        // this as net.Socket
+        this.on('end', () => clearTimeout(timeout))
+      })
+    }
+  })
+  await ipcServer.listen()
+
+  const client = new Ipc.Client(namespace)
+
+  setTimeout(() => {
+    client.close()
+  }, 500)
+
+  await expect(
+    client.call('eventName', requestData, 100)
+  ).resolves.toMatchObject(response)
+
+  await expect(client.call('eventName', requestData, 600)).rejects.toThrow(
+    /close/
+  )
+
+  await ipcServer.close()
+})
+
 // // todo
 // test('timeoutAndError', async () => {
 

@@ -1,5 +1,4 @@
 const { IPC } = require('node-ipc')
-const { EventEmitter } = require('events')
 const fs = require('fs-extra')
 const os = require('os')
 const path = require('path')
@@ -39,8 +38,10 @@ exports.Server = class {
         this.ipc.server.on('message', async (data, socket) => {
           const { id, method, params } = data
           if (!this.methods[method]) return
+          let done = false
+          socket.on('end', () => (done = true))
           try {
-            var result = await this.methods[method].apply(null, params)
+            var result = await this.methods[method].apply(socket, params)
           } catch (ex) {
             var error = {
               name: ex.name,
@@ -48,6 +49,8 @@ exports.Server = class {
               stack: ex.stack
             }
           }
+          if (done) return
+          done = true
           this.ipc.server.emit(socket, 'message', { id, method, result, error })
         })
         clearTimeout(t)
@@ -73,7 +76,7 @@ exports.Client = class {
   constructor(name, setIpcConfig = exports.setIpcConfig) {
     this._setIpcConfig = setIpcConfig
     this.options = { name }
-    this._receiveList = new Set()
+    this._receiveList = {}
     this.init()
   }
   async init() {
@@ -91,7 +94,7 @@ exports.Client = class {
         }, this.options.timeout)
         this.ipc.connectTo(name, () => {
           this.ipc.of[name].on('message', data => {
-            for (let cb of this._receiveList) cb(data)
+            if (this._receiveList[data.id]) this._receiveList[data.id](data)
           })
           clearTimeout(t)
           resolve()
@@ -105,21 +108,21 @@ exports.Client = class {
     const id = Math.random().toString()
     const p = new Promise((resolve, reject) => {
       const t = setTimeout(() => {
-        this._receiveList.delete(cb)
+        delete this._receiveList[id]
         reject(new Error(`IPC call "${method}(${params})" time out`))
         this._init = null
       }, this.options.timeout)
-      const cb = ({ id: _id, method: _method, result, error }) => {
-        if (id !== _id || method !== _method) return
-        this._receiveList.delete(cb)
+      const cb = ({ result, error }) => {
         clearTimeout(t)
+        delete this._receiveList[id]
         if (error) {
-          const ex = new Error()
-          Object.assign(ex, error)
-          reject(ex)
+          if (!(error instanceof Error)) {
+            error = Object.assign(new Error(error.message), error)
+          }
+          reject(error)
         } else resolve(result)
       }
-      this._receiveList.add(cb)
+      this._receiveList[id] = cb
     })
     this.ipc.of[this.options.name].emit('message', { id, method, params })
     return p
@@ -128,7 +131,14 @@ exports.Client = class {
     this._init = null
     if (!this.ipc.of[this.options.name]) return
     return new Promise(resolve => {
-      this.ipc.of[this.options.name].once('disconnect', resolve)
+      this.ipc.of[this.options.name].once('disconnect', () => {
+        resolve()
+        for (const id in this._receiveList) {
+          if (this._receiveList.hasOwnProperty(id)) {
+            this._receiveList[id]({ error: new Error('socket is closed') })
+          }
+        }
+      })
       this.ipc.disconnect(this.options.name)
     })
   }

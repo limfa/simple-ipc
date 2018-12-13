@@ -1,16 +1,13 @@
 simple package [node-ipc](https://github.com/RIAEvangelist/node-ipc)
 
-
 ## intro
 
 simple package node-ipc
 
-
 feature:
 
-* promise support
-* timeout error
-
+- promise support
+- timeout error
 
 ## usage
 
@@ -23,16 +20,23 @@ Ipc.defaultConfig.socketRoot = './.socket'
 
 const namespace = 'test'
 let ipcServer = new Ipc.Server(namespace, {
-  /* 
+  /*
   events: object<{
-    [eventName: string]: (params: any): any =>{};
+    [eventName: string]: (...params: [any]) => any | Promise<any>;
   }>
   */
-  eventName: async (params) => {
+  eventName: async function(...params) => {
     // get request params from client
     console.log(params)
     // response content to client
-    return response
+    return new Promise(resolve => {
+      let timeout = setTimeout(() => {
+        resolve(data)
+      }, 2000)
+      // clear follow step when socket end
+      // this as net.Socket
+      this.on('end', () => clearTimeout(timeout))
+    })
   }
 })
 // start server
