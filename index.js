@@ -2,6 +2,7 @@ const { IPC } = require('node-ipc')
 const fs = require('fs-extra')
 const os = require('os')
 const path = require('path')
+const { EventEmitter } = require('events')
 
 exports.setIpcConfig = function(ipc) {
   ipc.config.retry = 1000
@@ -16,6 +17,37 @@ exports.setIpcConfig = function(ipc) {
 }
 
 exports.defaultConfig = {}
+
+class MinSocket extends EventEmitter {
+  constructor(socket) {
+    super()
+    this.socket = socket
+    this._destroyed = false
+  }
+  end() {
+    this.emit('end')
+    const set = MinSocket.socketMap.get(this.socket)
+    if (set) set.delete(this)
+    this._destroyed = true
+  }
+  get destroyed() {
+    return this._destroyed || this.socket.destroyed
+  }
+  static get(socket) {
+    if (!this.socketMap.has(socket)) {
+      this.socketMap.set(socket, new Set())
+    }
+    const set = this.socketMap.get(socket)
+    const minSocket = new this(socket)
+    set.add(minSocket)
+    return minSocket
+  }
+  static closeAll(socket) {
+    const set = MinSocket.socketMap.get(socket)
+    if (set) set.forEach(v => v.end())
+  }
+}
+MinSocket.socketMap = new Map()
 
 exports.Server = class {
   constructor(name, methods, setIpcConfig = exports.setIpcConfig) {
@@ -38,10 +70,11 @@ exports.Server = class {
         this.ipc.server.on('message', async (data, socket) => {
           const { id, method, params } = data
           if (!this.methods[method]) return
+          const minSocket = MinSocket.get(socket)
           let done = false
-          socket.on('end', () => (done = true))
+          minSocket.on('end', () => (done = true))
           try {
-            var result = await this.methods[method].apply(socket, params)
+            var result = await this.methods[method].apply(minSocket, params)
           } catch (ex) {
             var error = {
               name: ex.name,
@@ -50,8 +83,13 @@ exports.Server = class {
             }
           }
           if (done) return
-          done = true
+          minSocket.end()
           this.ipc.server.emit(socket, 'message', { id, method, result, error })
+        })
+        this.ipc.server.on('connect', socket => {
+          socket.on('end', () => {
+            MinSocket.closeAll(socket)
+          })
         })
         clearTimeout(t)
         resolve()
@@ -92,7 +130,11 @@ exports.Client = class {
           reject(new Error(`IPC connect to "${name}" time out`))
           this._init = null
         }, this.options.timeout)
-        this.ipc.connectTo(name, () => {
+        this.ipc.connectTo(name)
+        let _inited = false
+        this.ipc.of[name].on('connect', () => {
+          if (_inited) return
+          _inited = true
           this.ipc.of[name].on('message', data => {
             if (this._receiveList[data.id]) this._receiveList[data.id](data)
           })
